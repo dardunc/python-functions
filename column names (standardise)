@@ -1,0 +1,25 @@
+# takes column names which can include spaces and non alpha numerics and standardised them
+#   changed % to p
+#   removes leading and trailing spaces
+#   replaces space(s) with single underscore
+#   makes everything lowercase
+
+def standard_column_name (original_column_name):
+
+    print(original_column_name)
+
+    orig = str(original_column_name)
+
+    # convert original column name so it will match processed dataframe rules
+    orig = re.sub('%+', 'p', orig) 
+    orig = re.sub('[^a-zA-Z0-9]', ' ', orig) # replace multiple spaces with a single underscore
+    orig = orig.strip() # remove spaces at start and end
+    orig = orig.lower()  # lowercase column names
+    orig = re.sub(' +', '_', orig) # replace multiple spaces with a single underscore
+    orig = orig.replace(' ', '_')     # replace space with underscore
+
+    print(orig)
+
+    return(orig)
+
+standard_column_name('XPSC##  oO    %%%')
