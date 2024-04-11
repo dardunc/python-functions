@@ -1,3 +1,22 @@
+##############################
+# IMPORT SPREADSHEET FORMAT  #
+##############################
+
+'''
+tab: file_imports
+columns: file_name	file_tab_name	import_from_row	output_table_name	key_column_name	key_column_value
+
+tab: column_map
+columns: output_table_name	original_column_name	rename_column_to	correct_values_list	add_values_to_master_list
+
+tab: add_columns
+columns: output_table_name	existing_column_name	create_new_column_name	search_string	value_if_true	value_if_false	duplicate_existing_column
+
+tab: correct_values
+columns: correct_values_list	change_from	change_to
+'''
+
+
 ###################
 # PYTHON PACKAGES #
 ###################
@@ -61,6 +80,22 @@ def dataframe_to_sqlite(database_path, dataframe_name, table_name, unique_rows):
     print(tn,'...rows imported: ',row_count)    
 
 
+###################################         
+#   sqlite settings variables     #
+###################################
+
+# Set the folder for where the input, output and database files will be saved
+username = os.getlogin()
+datapath = f"C:/Users/{username}/YOUR_FILEPATH/FOLDER"
+datafiles = f"{datapath}/YOUR_DATABASE_PATH/"
+
+# set the connection to the SQLITE database
+sqlite_database_name = "YOUR_DATABASE_NAME"
+con = sqlite3.connect(f"{datapath}/python/sqlite/{sqlite_database_name}.sqlite3")
+cursor = con.cursor()
+
+
+
 ###########################
 # data cleaning functions #
 ###########################
@@ -85,25 +120,7 @@ def import_excel (this_path, this_file, this_sheet, start_from_row):
 
 
 
-###################################         
-#   sqlite settings variables     #
-###################################
-
-# Set the folder for where the input, output and database files will be saved
-username = os.getlogin()
-datapath = f"C:/Users/{username}/YOUR_DATA_PATH/YOUR_FOLDER"
-datafiles = f"{datapath}/data/"
-
-# set the connection to the SQLITE database
-sqlite_database_name = "YOUR_DATABASE_NAME"
-con = sqlite3.connect(f"{datapath}/python/sqlite/{sqlite_database_name}.sqlite3")
-cursor = con.cursor()
-
-
 ### END OF SETUP  ###
-
-
-
 
 
 #########################################################
@@ -126,6 +143,7 @@ correct_values = import_excel(f"{datafiles}", 'YOUR_EXCEL_IMPORT_SPREADSHEET.xls
 
 # columns to add (e.g create a flag column based on a conditions)
 add_columns = import_excel(f"{datafiles}", 'YOUR_EXCEL_IMPORT_SPREADSHEET.xlsx', 'add_columns', 0) 
+
 
 
 
