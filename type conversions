@@ -1,0 +1,121 @@
+
+def convert_currency(your_dataframe, columns_to_covert):
+    column_names = columns_to_covert.split()
+
+    for i in range(len(column_names)):
+        this_col = column_names[i].lower()
+        eval(your_dataframe).columns = eval(your_dataframe).columns.str.lower()
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].astype(str)  
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].str.replace('$','',regex=True)  # replace '$'
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].str.replace(',','',regex=True)  # replace ',' 
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].str.replace('(','-',regex=True)  # replace '('  accounting format (100) is actually -100    
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].str.replace(')','',regex=True)  # replace ')'
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].str.replace(' ','',regex=True)  # replace ' '                  
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].str.replace('None','NaN',regex=True)  # replace 'None' with 'NaN' 
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].astype(float)
+
+def convert_percentage(your_dataframe, columns_to_covert):
+    column_names = columns_to_covert.split()
+
+    for i in range(len(column_names)):
+        this_col = column_names[i].lower()
+        eval(your_dataframe).columns = eval(your_dataframe).columns.str.lower()
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].astype(str)  
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].str.replace('%','',regex=True)  # replace '$'
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].str.replace('(','-',regex=True)  # replace '(' accounting format (100) is actually -100
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].str.replace(')','',regex=True)  # replace ')'          
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].str.replace(' ','',regex=True)  # replace ' '           
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].str.replace('None','NaN',regex=True)  # replace 'None' with 'NaN' 
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].astype(float)
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col]/100 # convert xx to 0.xx     
+
+
+def set_decimal_places(your_dataframe, num_decimals, columns_to_covert):
+    column_names = columns_to_covert.split()
+    n = int(num_decimals)
+
+    for i in range(len(column_names)):
+        this_col = column_names[i]
+        eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].round(decimals = n)
+
+
+def convert_to_datetime(your_dataframe, date_format, columns_to_covert):
+    column_names = columns_to_covert.split()
+
+    for i in range(len(column_names)):
+        this_col = column_names[i].lower()
+        eval(your_dataframe).columns = eval(your_dataframe).columns.str.lower()
+        try:
+            eval(your_dataframe)[this_col] = pandas.to_datetime(eval(your_dataframe)[this_col],format=f'{date_format}').dt.normalize()
+
+        except:
+            print(f'{this_col} contains illegal dates OR incorrect date format {date_format} used')
+
+
+def standard_string_date(your_dataframe, date_format, columns_to_covert):
+    column_names = columns_to_covert.split()
+    converted_dates = pandas.DataFrame(columns=['date_current', 'date_converted'])
+
+    for i in range(len(column_names)):
+        this_col = column_names[i].lower()
+        eval(your_dataframe).columns = eval(your_dataframe).columns.str.lower()
+
+        all_dates = eval(your_dataframe)[this_col].drop_duplicates().tolist()
+
+        for d in range(len(all_dates)):
+            this_date_error = 0
+            this_date = all_dates[d]
+
+            if date_format == 'dd-mm-yyyy' and str(this_date) != 'None':
+                day = this_date[0:2]
+                month = this_date[3:5]
+                year = this_date[-4:]
+
+                new_date_string = f'{year}-{month}-{day}'
+                if this_date_error == 0:
+                    converted_dates.loc[len(converted_dates.index)] = [this_date, new_date_string]                     
+
+            elif date_format == 'ddmmmyyyy' and str(this_date) != 'None':
+                day = this_date[0:2]
+                month = this_date[2:5]
+                year = this_date[-4:]
+
+                if month.upper() == 'JAN':
+                    month = '01'
+                elif month.upper() == 'FEB':
+                    month = '02'   
+                elif month.upper() == 'MAR':
+                    month = '03'                      
+                elif month.upper() == 'APR':
+                    month = '04'  
+                elif month.upper() == 'MAY':
+                    month = '05'            
+                elif month.upper() == 'JUN':
+                    month = '06'   
+                elif month.upper() == 'JUL':
+                    month = '07'    
+                elif month.upper() == 'AUG':
+                    month = '08'    
+                elif month.upper() == 'SEP':
+                    month = '09'       
+                elif month.upper() == 'OCT':
+                    month = '10'                        
+                elif month.upper() == 'NOV':
+                    month = '11'  
+                elif month.upper() == 'DEC':
+                    month = '12'
+                else:
+                    month = 'ER'
+                    this_date_error = 1
+
+                new_date_string = f'{year}-{month}-{day}'
+                if this_date_error == 0:
+                    converted_dates.loc[len(converted_dates.index)] = [this_date, new_date_string]     
+
+        for r in range(len(converted_dates)):
+            this_old_value = converted_dates['date_current'][r]
+            this_new_value = converted_dates['date_converted'][r]
+
+            #eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].astype(str)
+            eval(your_dataframe)[this_col] = eval(your_dataframe)[this_col].replace([this_old_value], [this_new_value])
+
