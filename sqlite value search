@@ -1,0 +1,57 @@
+###################
+# PYTHON PACKAGES #
+###################
+
+# sqlite database
+import sqlite3
+
+# pandas
+import pandas as pd
+import pandas
+pandas.set_option('display.max_colwidth', 40000)
+pandas.set_option('expand_frame_repr', False) # Stops it doing line breaks when printing to log
+
+
+###################################         
+#   sqlite settings variables     #
+###################################
+
+# Set the folder for where the input, output and database files will be saved
+datapath = f"/your_path/your_folder/"
+datafiles = f"{datapath}"
+
+# set the connection to the SQLITE database
+sqlite_database_name = "your_sqlite_database.sqlite3"
+con = sqlite3.connect(f"{datapath}{sqlite_database_name}")
+cursor = con.cursor()
+
+search_term = 'your search term to find within the database'
+
+# Once you have a connection (con) cursor setup (see 'database connections and settings' under each databse) this will query the database
+
+# this table within sqlite contains all the table names (column: name)
+query = (''' 
+select distinct(name) as table_name from sqlite_master where type='table'
+''')
+
+# reading SQLite table into Pandas
+all_table_names = pandas.read_sql_query(query, con)
+
+# this will identify all the tables and columns, then search within the column data for the search term
+for i in range(len(all_table_names)):
+    this_table = all_table_names.table_name[i]
+
+    this_table_pragma = pandas.read_sql_query(f'PRAGMA table_info({this_table})', con)
+    this_table_columns = this_table_pragma['name']
+
+    for n in range(len(this_table_columns)):
+        this_column = this_table_columns[n]
+
+        this_column_values = pandas.read_sql_query(f'select distinct({this_column}) as column_value from {this_table} order by 1',con)
+
+        for x in range(len(this_column_values)):
+            this_value = str(this_column_values.column_value[x])
+
+            if search_term in this_value:
+                print(f'{this_table}.{this_column} contains {search_term}')
+                break # exit once the value is found
