@@ -13,9 +13,9 @@ def merge_tables_sqlite(merge_to_table, merge_from_table, database_connection, d
         database_cursor.execute('drop table if exists temp_merge')
         query = ('''
         create table temp_merge as
-        select * from {}
+        select distinct * from {}
         union
-        select * from {}
+        select distinct * from {}
         ''').format(merge_to_table, merge_from_table)
 
         database_cursor.execute(query)
