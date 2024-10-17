@@ -1,4 +1,6 @@
 # merge (union) data from merge_from_table into merge_to_table (only unique rows)
+# if the "merge_to_table" does not exist, it creates one based on the "merge_from_table"  tab;e
+
 def merge_tables_sqlite(merge_to_table, merge_from_table, database_connection, database_cursor):
 
     table_exists = pandas.read_sql_query(f'select name from sqlite_schema where type = "table" and name = "{merge_to_table}"', database_connection) 
