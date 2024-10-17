@@ -5,7 +5,7 @@ def merge_tables_sqlite(merge_to_table, merge_from_table, database_connection, d
 
     if table_exists.empty:
         print(f'Table does not exist, creating and populating table {merge_to_table}') 
-        database_cursor.execute('create table lrcat_user_tags as select distinct * from temp_this_lrcat_user_tags')
+        database_cursor.execute(f'create table {merge_to_table} as select distinct * from {merge_from_table}')
         database_connection.commit()
 
     else: 
@@ -16,7 +16,7 @@ def merge_tables_sqlite(merge_to_table, merge_from_table, database_connection, d
         select * from {}
         union
         select * from {}
-        ''').format('lrcat_user_tags', 'temp_this_lrcat_user_tags')
+        ''').format(merge_to_table, merge_from_table)
 
         database_cursor.execute(query)
         database_connection.commit()
@@ -35,8 +35,8 @@ def merge_tables_sqlite(merge_to_table, merge_from_table, database_connection, d
             print('No new rows to add')
 
         database_cursor.execute(f'drop table temp_merge')
-        database_connection.commit()      
-
+        database_connection.commit()        
+    
 
 # FUNCTION CALL
 merge_tables_sqlite ('your_merge_to_table', 'your_merge_from_table', your_database_connection, your_database_cursor)
