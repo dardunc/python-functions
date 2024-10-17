@@ -1,0 +1,39 @@
+# merge (union) data from merge_from_table into merge_to_table (only unique rows)
+def merge_tables_sqlite(merge_to_table, merge_from_table, database_connection, database_cursor):
+
+    table_exists = pandas.read_sql_query(f'select name from sqlite_schema where type = "table" and name = "{merge_to_table}"', database_connection) 
+
+    if table_exists.empty:
+        print(f'Table does not exist, creating and populating table {merge_to_table}') 
+        database_cursor.execute('create table lrcat_user_tags as select distinct * from temp_this_lrcat_user_tags')
+        database_connection.commit()
+
+    else: 
+        print(f'Merging: {table_exists.name[0]} and {merge_from_table}') 
+        database_cursor.execute('drop table if exists temp_merge')
+        query = ('''
+        create table temp_merge as
+        select * from {}
+        union
+        select * from {}
+        ''').format('lrcat_user_tags', 'temp_this_lrcat_user_tags')
+
+        database_cursor.execute(query)
+        database_connection.commit()
+
+        row_count_merged = pandas.read_sql_query(f'select count(*) as num_rows from temp_merge', database_connection) 
+        original_table_row_count = pandas.read_sql_query(f'select count(*) as num_rows from {merge_to_table}', database_connection) 
+
+        if row_count_merged.num_rows[0] > original_table_row_count.num_rows[0]:
+            rows_to_add = row_count_merged.num_rows[0]-original_table_row_count.num_rows[0]
+            database_cursor.execute(f'delete from {merge_to_table}')
+            database_cursor.execute(f'insert into {merge_to_table} select * from temp_merge')        
+            database_connection.commit()
+            print(f'{rows_to_add} new rows to added')
+            
+        else:
+            print('No new rows to add')
+
+
+# FUNCTION CALL
+merge_tables_sqlite ('your_merge_to_table', 'your_merge_from_table', your_database_connection, your_database_cursor)
