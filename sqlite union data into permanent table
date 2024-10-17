@@ -34,6 +34,8 @@ def merge_tables_sqlite(merge_to_table, merge_from_table, database_connection, d
         else:
             print('No new rows to add')
 
+        database_cursor.execute(f'drop table temp_merge')
+
 
 # FUNCTION CALL
 merge_tables_sqlite ('your_merge_to_table', 'your_merge_from_table', your_database_connection, your_database_cursor)
