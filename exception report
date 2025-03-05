@@ -1,0 +1,1109 @@
+###################
+# PYTHON PACKAGES #
+###################
+
+# pandas
+import pandas as pd
+import pandas
+pandas.set_option('display.max_colwidth', 40000)
+pandas.set_option('expand_frame_repr', False) # Stops it doing line breaks when printing to log
+
+# microsoft sqlserver database
+from urllib import parse
+from sqlalchemy import create_engine # used for sqlite as well
+from sqlalchemy.sql import text
+
+# sqlite database
+import sqlite3
+import os
+import csv
+
+# Microsoft Excel
+import openpyxl
+from openpyxl import Workbook
+from openpyxl.worksheet.filters import AutoFilter
+
+
+#############
+# FUNCTIONS #
+#############
+
+#############################
+# sqlite database functions #
+#############################
+
+# SQLAlechemy to SQLITE 
+def dataframe_to_sqlite(database_path, dataframe_name, table_name, unique_rows):
+
+    # if table name is blank, make it the same name as the dataframe
+    tn = table_name
+    if tn == '':
+        tn = dataframe_name
+
+    print('connection made')
+
+    df = eval(dataframe_name)
+    df.columns = df.columns.str.lower()      # convert all column names to lowercase
+
+    if 'y' in unique_rows.lower():
+        print('DROP DUPES')
+        df = df.drop_duplicates()
+
+    # Create SQL from dataframe
+    df.to_sql(tn, con, if_exists='replace',index=False)    # replaces the table
+
+    print('data inserted')
+
+    # print the number of rows imported
+    rc_sql = 'select count(*) as num_rows from {}'.format(tn)
+    row_count = pandas.read_sql_query(rc_sql, con)
+    row_count = row_count.iloc[0]['num_rows']
+    print(tn,'...rows imported: ',row_count)    
+
+
+
+###########################
+# data cleaning functions #
+###########################
+
+# function to import an excel and clean up the column names
+def import_excel (this_path, this_file, this_sheet, start_from_row):
+
+    # import the excel file
+    df = pd.read_excel(this_path+this_file, sheet_name=this_sheet, header=start_from_row)
+    
+    # clean the column names
+    df.columns = df.columns.str.replace('%', 'p',regex=True)  # replace percentage with 'p'
+    df.columns = df.columns.str.replace('\$', 'd',regex=True)  # replace dollar sign with 'd'
+    df.columns = df.columns.str.replace('[^a-zA-Z0-9]', ' ',regex=True)  # replace non-alpha-numeric with sapces
+    df.columns = df.columns.str.strip() # remove spaces at start and end
+    df.columns = df.columns.str.lower() # lowercase column names
+    df.columns = df.columns.str.replace(' +', '_',regex=True) # replace multiple spaces with a single underscore
+    df.columns = df.columns.str.replace(' ', '_',regex=True) # replace space with underscore
+    df.columns = df.columns.str.replace('_+', '_',regex=True) # replace multiple spaces with a single underscore
+
+    return df
+
+# remove "None" and "nan values from SQLite table and replace with Null
+def remove_none_and_nan (table_name):
+
+    table_to_clean = table_name
+    get_column_names = f"PRAGMA table_info({table_to_clean})"
+
+    col_names = pd.read_sql_query(get_column_names, con)
+
+    for i in range(len(col_names)):
+        this_col_name  = col_names['name'][i]
+        #print(this_col_name)
+
+        this_remove_none = f"update {table_to_clean} set {this_col_name} = NULLIF({this_col_name}, 'None')"
+        this_remove_nan = f"update {table_to_clean} set {this_col_name} = NULLIF({this_col_name}, 'nan')"
+        
+        cursor.execute(this_remove_none)
+        cursor.execute(this_remove_nan)    
+
+        del this_remove_none
+        del this_remove_nan
+
+    con.commit()
+
+
+# Updates an Excel sheet and freezes the top header row, add filters AND resizes the column widths to match the data
+def excel_pretty(file_path, sheet_name):
+
+    # Freeze Column headers
+    workbook = openpyxl.load_workbook(file_path)
+
+    # Select the worksheet you want to modify
+    sheet = workbook[sheet_name]  
+
+    # Freeze the top row
+    sheet.freeze_panes = sheet['A2']  # This freezes the first row
+
+    print(f"The top row of {sheet_name} has been frozen in {file_path}.")
+
+    # Add filters to the columns
+    sheet.auto_filter.ref = sheet.dimensions
+
+    # Adjust column widths
+    for col in sheet.columns:
+        max_length = 0
+        column = col[0].column_letter  # Get the column name
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(cell.value)
+            except:
+                pass
+
+        adjusted_width = max_length + 5
+        sheet.column_dimensions[column].width = adjusted_width
+
+    # Save the workbook
+    workbook.save(file_path)
+
+    print(f"Cells have been resized to fit content in {file_path}.")
+
+# writes a dataframe to a specific sheet in an excel file (which it creates if the file doesnt exist)
+def data_to_excel_sheet (folder_path, file_name, sheet_name, dataframe_name):
+
+    # Specify the file path
+    #filename = 'test_excel_file.xlsx'
+    this_file_path = f'{folder_path}/{file_name}'
+
+    # UPDATE "Sheet1" tab
+    #sheet_name = 'Sheet2'
+
+    # Check if the file exists
+    if not os.path.exists(this_file_path):
+        # Create a new workbook and save it to the specified file path
+        wb = Workbook()
+        wb.save(this_file_path)
+
+    # Load existing Excel file
+    with pd.ExcelWriter(this_file_path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+        
+        # Write DataFrame to the specified sheet, replacing its contents
+        dataframe_name.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    print(f"Data has been written to {sheet_name} in {this_file_path}.")
+
+    excel_pretty(this_file_path, sheet_name)    
+
+
+
+###################################         
+#   sqlite settings variables     #
+###################################
+
+# Set the folder for where the input, output and database files will be saved
+username = os.getlogin()
+datapath = f"C:/Users/{username}/YOUR_DATA_PATH/YOUR_DATA_FOLDER"
+datafiles = f"{datapath}/data/"
+
+# set the connection to the SQLITE database
+sqlite_database_name = "YOUR_DATABASE_NAME"
+con = sqlite3.connect(f"{datapath}/python/sqlite/{sqlite_database_name}.sqlite3")
+cursor = con.cursor()
+
+### END OF SETUP  ###
+
+
+
+#########################################################
+#               IMPORT SETTINGS SPREADSHEET             #
+#########################################################
+
+# IMPORT FILE WHICH CONTAINS ALL INFO NEEDED TO IMPORT AND CLEAN INPUT FILES
+
+# Call the function to import Excel'import_list.xlsx', which contains all the other files which need importing, changes and qa information
+# import_excel(file_path, file_name, excel_sheet_name, import_from_row)
+
+# list of files to be imported, import information (e.g. which excel tab to import and from which row in the tab)), output table name, and primary join_join_keys 
+file_imports = import_excel(f"{datafiles}", 'IMPORT_LIST_EXCEPTION_CHECKING.xlsx', 'file_imports', 0) 
+
+# columns which need to be renamed, which master-list of correct values need to be applied, and whether the column values need to be added to a master-list
+column_map = import_excel(f"{datafiles}", 'IMPORT_LIST_EXCEPTION_CHECKING.xlsx', 'column_map', 0) 
+
+# correct value list name, as well as change from and change to values (e.g "Greater Sydney" gets changed to "Sydney")
+correct_values = import_excel(f"{datafiles}", 'IMPORT_LIST_EXCEPTION_CHECKING.xlsx', 'correct_values', 0) 
+
+# columns to add (e.g create a flag column based on a conditions)
+add_columns = import_excel(f"{datafiles}", 'IMPORT_LIST_EXCEPTION_CHECKING.xlsx', 'add_columns', 0) 
+
+
+#########################################################
+#               CREATE DYNAMIC IMPORT CODE              #
+#########################################################
+
+dynamic_code = pandas.DataFrame(columns=['run_order', 'code'])
+dynamic_code['run_order'] = dynamic_code['run_order'].astype(int)
+
+
+
+#########################################################
+#                   IMPORT SPREADSHEETS                 #
+#########################################################
+dynamic_code.loc[len(dynamic_code.index)] = [99, '# IMPORT STEPS']
+dynamic_code.loc[len(dynamic_code.index)] = [798, ' ']
+dynamic_code.loc[len(dynamic_code.index)] = [799, '# COPY CLEANED DATAFRAMES INTO SQLITE #']
+
+
+
+# Based on the 'file_imports' sheet in 'import_list.xlsx', generate the function calls needed to import the data files
+for i in range(len(file_imports)):
+    this_file = file_imports['file_name'][i]
+    this_tab = file_imports['file_tab_name'][i]
+    this_from_row = file_imports['import_from_row'][i]
+    this_output_name = file_imports['output_table_name'][i]
+
+    # import to dataframe        
+    this_string = f"{this_output_name} = import_excel('{datafiles}','{this_file}','{this_tab}',{this_from_row})"
+    dynamic_code.loc[len(dynamic_code.index)] = [i+100, this_string]
+
+    # write dataframe to the database
+    this_string = f"dataframe_to_sqlite ('{sqlite_database_name}', '{this_output_name}','','')"
+    dynamic_code.loc[len(dynamic_code.index)] = [i+800, this_string]
+
+    del this_file
+    del this_tab
+    del this_from_row
+    del this_output_name
+    del this_string
+
+
+#########################################################
+#                    RENAME COLUMNS                     #
+#########################################################
+
+dynamic_code.loc[len(dynamic_code.index)] = [298, ' ']
+dynamic_code.loc[len(dynamic_code.index)] = [299, '# RENAME COLUMNS']
+
+# convert original column name so it will match processed dataframe rules
+column_map['original_column_name'] = column_map['original_column_name'].astype(str).str.replace('%', 'p', regex = True)    # replace percentage with 'p'
+column_map['original_column_name'] = column_map['original_column_name'].astype(str).str.replace('\$', 'd', regex = True)    # replace dollar sign with 'd'
+column_map['original_column_name'] = column_map['original_column_name'].astype(str).str.replace('[^a-zA-Z0-9]', ' ', regex = True)     # replace non-alpha-numeric with sapces
+column_map['original_column_name'] = column_map['original_column_name'].astype(str).str.strip() # remove spaces at start and end
+column_map['original_column_name'] = column_map['original_column_name'].astype(str).str.lower()  # lowercase column names
+column_map['original_column_name'] = column_map['original_column_name'].astype(str).str.replace(' +', '_', regex = True)      # replace multiple spaces with a single underscore
+column_map['original_column_name'] = column_map['original_column_name'].astype(str).str.replace(' ', '_', regex = True)     # replace space with underscore
+
+# convert new column name so it will match processed dataframe rules
+column_map['rename_column_to'] = column_map['rename_column_to'].astype(str).str.replace('%', 'p', regex = True)    # replace percentage with 'p'
+column_map['rename_column_to'] = column_map['rename_column_to'].astype(str).str.replace('\$', 'd', regex = True)    # replace percentage with 'd'
+column_map['rename_column_to'] = column_map['rename_column_to'].astype(str).str.replace('[^a-zA-Z0-9]', ' ', regex = True)     # replace non-alpha-numeric with sapces
+column_map['rename_column_to'] = column_map['rename_column_to'].astype(str).str.strip() # remove spaces at start and end
+column_map['rename_column_to'] = column_map['rename_column_to'].astype(str).str.lower()  # lowercase column names
+column_map['rename_column_to'] = column_map['rename_column_to'].astype(str).str.replace(' +', '_', regex = True)      # replace multiple spaces with a single underscore
+column_map['rename_column_to'] = column_map['rename_column_to'].astype(str).str.replace(' ', '_', regex = True)     # replace space with underscore
+
+# Based on the 'column_map' sheet of 'import_list.xlsx', generate rename the columns code
+for i in range(len(column_map)):
+    this_output_table_name = column_map['output_table_name'][i]  
+    this_original_column_name = column_map['original_column_name'][i]  
+    this_rename_column_to = column_map['rename_column_to'][i]  
+    this_correct_values_list = column_map['correct_values_list'][i]
+
+    this_string = f"{this_output_table_name}.rename(columns = ^<'{this_original_column_name}':'{this_rename_column_to}'^>, inplace = True)"
+    this_string = this_string.replace("^<","{")
+    this_string = this_string.replace("^>","}")
+    
+    if str(this_rename_column_to) != 'nan':
+        dynamic_code.loc[len(dynamic_code.index)] = [i+300, this_string]   
+
+    del this_output_table_name
+    del this_original_column_name
+    del this_rename_column_to
+    del this_correct_values_list
+    del this_string
+
+
+
+#########################################################
+#               CREATE BLANK MASTER LISTS               #
+#########################################################
+
+dynamic_code.loc[len(dynamic_code.index)] = [398, ' ']
+dynamic_code.loc[len(dynamic_code.index)] = [399, '# CREATE BLANK MASTER LISTS']
+
+# use "column_map" "add_values_to_master_list" column
+master_lists = column_map['add_values_to_master_list'].dropna().drop_duplicates().to_frame()
+master_lists.reset_index(drop=True, inplace=True)  # reset the index after drop_duplicates() or things get messed up
+
+# loop through "master_lists"
+for i in range(len(master_lists)):
+    this_master_list_name = master_lists['add_values_to_master_list'][i]
+    this_ml_name = f'master_list_{this_master_list_name}'
+
+    # Create an empty table
+    this_string = f"{this_ml_name} = pandas.DataFrame(columns=['valid_value'])"
+
+    dynamic_code.loc[len(dynamic_code.index)] = [i+400, this_string]   
+
+    del this_master_list_name
+    del this_ml_name
+    del this_string
+
+del i
+
+#########################################################
+#     RUN DYNAMIC IMPORT CODE (prints code below)       #
+#########################################################
+
+# sorting a dataframe by a column, need inplace=True or nothing happens
+dynamic_code.sort_values(by='run_order', ascending=True, inplace=True)
+print(dynamic_code)
+dynamic_code.reset_index(drop=True, inplace=True)  # reset the index each time or things get messed up
+
+for i in range(len(dynamic_code)):
+    this_line = dynamic_code['run_order'][i]
+
+    if this_line < 798:     # the imports to SQLITE dynamic codes starts at run_order = 798
+        print(dynamic_code['code'][i])
+
+        # run the line of code 
+        exec(dynamic_code['code'][i])
+
+
+del i
+
+#########################################################
+#                       ADD COLUMNS                     #
+#########################################################
+
+# duplicate values if duplicate_existing_column = Y
+# otherwise just create blank columns at this stage, so values can be populated after data cleaning is done
+
+new_columns = add_columns[['output_table_name', 'existing_column_name', 'create_new_column_name', 'duplicate_existing_column','value_if_true','value_if_false']].copy().drop_duplicates()
+
+for i in range(len(new_columns)):
+    this_output_name = new_columns['output_table_name'][i]
+    this_existing_column_name = new_columns['existing_column_name'][i]
+    this_create_new_column_name = new_columns['create_new_column_name'][i]  
+    this_duplicate_existing_column = new_columns['duplicate_existing_column'][i]  
+    this_value_if_true = new_columns['value_if_true'][i]  
+    this_value_if_false = new_columns['value_if_false'][i]  
+
+    this_num_columns = len(eval(this_output_name).columns)
+
+    # add the column and DUPLICATE the value from an existing column
+    if str(this_duplicate_existing_column).strip() == 'Y':
+        eval(this_output_name)[this_create_new_column_name] = eval(this_output_name).loc[:,this_existing_column_name]  # column value = duplicate from existing column
+
+    # add a column with a SPECIFIC value if: value_if_true == value_if_false
+    elif str(this_value_if_true).strip() != 'NaN' and str(this_value_if_true).strip() == str(this_value_if_false).strip():
+        #print(f"eval({this_output_name}).insert({this_num_columns}, {this_create_new_column_name}, {this_value_if_true}) # column value = this_value_if_true")
+        eval(this_output_name).insert(this_num_columns, this_create_new_column_name, this_value_if_true) # column value = this_value_if_true
+
+    # add a blank column
+    else:
+        eval(this_output_name).insert(this_num_columns, this_create_new_column_name, '') # blank
+    
+    del this_output_name
+    del this_existing_column_name
+    del this_create_new_column_name
+    del this_duplicate_existing_column
+    del this_num_columns
+    del this_value_if_true
+    del this_value_if_false
+
+del new_columns
+
+#########################################################
+# FIX INCORRECT VALUES, THEN CREATE MASTER LISTS FOR QA #
+#########################################################
+
+# only run if there are columns to map
+if not column_map.empty:
+
+    # use the "column_map" excel sheet and "correct_values" excel sheet to find and replace incorrect values 
+    #   e.g. change region value from 'Hunter Valley exc Newcastle' to 'Hunter Valley excl Newcastle'
+
+    # loop through "column_map" sheet
+    for i in range(len(column_map)):
+        
+        this_output_table_name = column_map['output_table_name'][i]
+        this_original_column_name = column_map['original_column_name'][i]    
+        this_rename_column_to = column_map['rename_column_to'][i]        
+        this_correct_values_list = column_map['correct_values_list'][i]
+        this_master_list = column_map['add_values_to_master_list'][i]
+
+        # In case the column was renamed in the previous step
+        if str(this_rename_column_to) == 'nan':
+            this_col_name = this_original_column_name
+        else:
+            this_col_name = this_rename_column_to
+
+        # create a list of values to change based on the "correct_values" excel tab, for this row in 'column_map' excel tab
+        this_correct_list = correct_values.loc[correct_values['correct_values_list'] == this_correct_values_list]
+        
+        if str(this_correct_values_list).lower() != 'nan':
+        
+            this_correct_list.reset_index(drop=True, inplace=True)  # reset the index each time or things get messed up
+
+            # loop though "this_correct_list" and make the changes
+            for n in range(len(this_correct_list)):
+                this_change_from = this_correct_list['change_from'][n]
+                this_change_to = this_correct_list['change_to'][n]
+
+
+                # do a find and replace (change the values)
+                eval(this_output_table_name)[f'{this_col_name}'] = eval(this_output_table_name)[f'{this_col_name}'].replace(to_replace = f'{this_change_from}', value = f'{this_change_to}')
+
+            # UPDATE MASTER LISTS        
+            if str(this_master_list).lower() != 'nan':
+
+                # Now that the values have been corrected, create master lists so QA can be done and exceptions can be raised
+                this_list = eval(f'master_list_{this_master_list}')  # gets the current list
+
+                new_values = eval(this_output_table_name)[f'{this_col_name}'].to_frame().drop_duplicates()
+                new_values.rename(columns = {f'{this_col_name}':'valid_value'}, inplace = True)
+                new_values.reset_index(drop=True, inplace=True)  # reset the index each time or things get messed up
+
+                #merge old and new values
+                for x in range(len(new_values)):
+                    this_value = new_values['valid_value'][x]
+
+                    if str(this_value).strip() != '' and str(this_value).lower() != 'nan':
+                        this_list.loc[len(this_list.index)] = [this_value]   
+
+                # replace the original master list with the merged one      
+                f'master_list_{this_master_list}' == this_list
+
+                del this_list
+                del new_values
+                del this_value
+
+                try:
+                    del this_change_from
+                    del this_change_to
+
+                except:
+                    print('.')
+
+
+
+        del this_output_table_name
+        del this_original_column_name
+        del this_rename_column_to
+        del this_correct_values_list
+        del this_master_list
+        del this_col_name
+        del this_correct_list
+
+    del i
+    del n
+    del x
+
+
+    # RUN QA CHECKS AGAINST THE MASTER LISTS CREATED IN PREVIOUS STEP
+    exception_list = pandas.DataFrame(columns=['output_table','column_name','exception_value','comment'])
+
+    for i in range(len(column_map)):
+        
+        this_output_table_name = column_map['output_table_name'][i]
+        this_original_column_name = column_map['original_column_name'][i]    
+        this_rename_column_to = column_map['rename_column_to'][i]        
+        this_correct_values_list = column_map['correct_values_list'][i]
+        #this_master_list = column_map['add_values_to_master_list'][i]
+
+        # In case the column was renamed in the previous step
+        if str(this_rename_column_to) == 'nan':
+            this_col_name = this_original_column_name
+        else:
+            this_col_name = this_rename_column_to
+
+        if str(this_correct_values_list).lower() != 'nan':
+
+            # create a list of all values from the dataset column to check
+            this_list_to_check = eval(this_output_table_name)[this_col_name].to_frame().drop_duplicates().dropna()
+            this_list_to_check.sort_values(this_col_name, ascending=True, inplace=True)
+            this_list_to_check.rename(columns = {this_col_name:'valid_value'}, inplace = True)
+            this_list_to_check.reset_index(drop=True, inplace=True)  # reset the index each time or things get messed up
+
+            this_master_list = eval(f'master_list_{this_correct_values_list}')['valid_value'].to_frame().drop_duplicates()
+            this_master_list.sort_values('valid_value', ascending=True, inplace=True)
+            this_master_list.reset_index(drop=True, inplace=True)  # reset the index each time or things get messed up
+
+            #outer merge the two DataFrames, adding an indicator column called 'Exist'
+            this_compare = pandas.merge(this_master_list, this_list_to_check, how='outer', indicator='Exist')
+
+            #find which rows aren't in the master list, and values missing from each table (left_only = masterlist, right_only = table)
+            for n in range(len(this_compare)):
+                this_value = this_compare['valid_value'][n]
+                this_comment = this_compare['Exist'][n]
+                
+                if str(this_comment) == 'right_only':  # values not in the master list
+                    print(f'VALUE NOT IN MASTER LIST: {this_value} ({this_output_table_name}.{this_col_name})')
+                    this_comment = 'NOT IN MASTER LIST'
+
+                    exception_list.loc[len(exception_list.index)] = [this_output_table_name, this_col_name, this_value, this_comment]
+
+                elif str(this_comment) == 'left_only':  # values only in the master list 
+                    this_comment = f'not in this list'
+
+                    exception_list.loc[len(exception_list.index)] = [this_output_table_name, this_col_name, this_value, this_comment]
+
+                del this_comment
+                del this_value
+
+            del this_output_table_name
+            del this_original_column_name
+            del this_rename_column_to
+            del this_correct_values_list
+            del this_col_name
+            del this_list_to_check
+            del this_master_list
+            del this_compare
+
+    del i
+
+    # export exception list to same folder as code
+    exception_list.to_excel('import_exception_list.xlsx',index = False)
+
+    # copy exception list to sqlite
+    dataframe_to_sqlite (con, 'exception_list','','')
+
+    # UPDATE FLAG COLUMNS (using flag logic in "add_columns" spreadsheet)
+
+    flag_columns = add_columns[['output_table_name', 'existing_column_name', 'create_new_column_name', 'search_string', 'value_if_true', 'value_if_false']].copy().drop_duplicates()
+
+    for i in range(len(flag_columns)):
+        this_output_table_name = flag_columns['output_table_name'][i]
+        this_existing_column_name = flag_columns['existing_column_name'][i]
+        this_create_new_column_name = flag_columns['create_new_column_name'][i]  
+        this_search_string = flag_columns['search_string'][i]  
+        this_value_if_true = flag_columns['value_if_true'][i]  
+        this_value_if_false = flag_columns['value_if_false'][i]      
+        
+        if str(this_search_string).strip().lower() != 'nan':    # only run where "search_string" in the "add_columns" spreadsheet is not null
+        
+            # check for wildcards in searches (wildcard = * symbol)
+            if '*' in str(this_search_string):  # contains wildcards
+                this_search = str(this_search_string).replace('*','').lower()
+            
+            else:
+                this_search = str(this_search_string).lower().strip()   # no wildcards
+
+            # go the "output table" and apply flag logic
+            for n in range(len(eval(this_output_table_name))):  # output table
+                this_row_value = eval(this_output_table_name)[this_existing_column_name][n]
+                this_row_value = str(this_row_value).lower().strip()    # make lowercase and strip leading and trailing spaces
+
+                if this_search in str(this_row_value): 
+                    eval(this_output_table_name).at[n,this_create_new_column_name]=this_value_if_true  # TRUE - update the same row's (flag column to "this_value_if_true")
+                    #print(f'SEARCH TRUE: "{this_row_value}" contains "{this_search}"')
+
+                else:
+                    eval(this_output_table_name).at[n,this_create_new_column_name]=this_value_if_false  # FALSE - update the same row's (flag column to "this_value_if_false")
+                    #print(f'SEARCH FALSE: "{this_row_value}" does not contain "{this_search}"')
+
+                del this_row_value
+
+            del this_search
+
+        del this_output_table_name
+        del this_existing_column_name
+        del this_create_new_column_name
+        del this_search_string
+        del this_value_if_true
+        del this_value_if_false
+
+
+#########################################################
+#                       CREATE KEYS                     #
+#########################################################
+
+print('# CREATING KEY COLUMNS')
+print('')
+
+for i in range(len(file_imports)):
+    this_output_name = file_imports['output_table_name'][i]
+    this_key_column_name = file_imports['key_column_name'][i]
+    this_key_column_value = file_imports['key_column_value'][i]
+
+
+    if str(this_key_column_name) != 'nan':
+
+        this_code = f"eval('{this_output_name}')['{this_key_column_name}'] = "
+        #print(this_code)
+
+        this_delimiter_count = this_key_column_value.count('|')
+        #print('number of delimiters: ',this_delimiter_count)
+
+        c=0
+        this_search_position = 0
+        this_string = this_key_column_value
+
+        while c <= this_delimiter_count:
+            this_string = this_key_column_value[this_search_position:]
+            #print('searching: ',this_string)
+            #print('loop: ',c)
+
+            this_delimiter_position = this_string.find('|')
+            #print('delimeter positon: ',this_delimiter_position)
+            
+            if this_delimiter_position == -1:   # final loop will return false (-1) when searchin for a delimiter
+                new_string = this_string.lower()
+            
+            else: 
+                new_string = this_string[:this_delimiter_position].lower()
+            
+            #print('substring: ',new_string)
+
+            this_search_position = this_search_position + this_delimiter_position+1
+            #print('updated search position: ',this_search_position)
+
+            if c < this_delimiter_count:
+                this_code = f"{this_code} {this_output_name}['{new_string}'].astype(str) + '-' +"
+
+            else:
+                this_code = f"{this_code} {this_output_name}['{new_string}'].astype(str)"
+
+            #print(this_code)
+
+            c=c+1
+
+        print(this_code)
+
+        # this will run the string which was created above, as if it was a line of code
+        exec(this_code)
+
+        # clean up the newly created key field, remove spaces and make everything lowercase because python is case sensitive
+        eval(this_output_name)[this_key_column_name] =  eval(this_output_name)[this_key_column_name].astype(str).str.replace(' +', '', regex = True)      # replace multiple spaces nothing
+        eval(this_output_name)[this_key_column_name] =  eval(this_output_name)[this_key_column_name].astype(str).str.replace(' ', '', regex = True)     # replace space nothing
+
+        #DW24 remove NANs
+        eval(this_output_name)[this_key_column_name] =  eval(this_output_name)[this_key_column_name].astype(str).str.replace('-nan', '-', regex = True)     # get rid of 'nan' in keys    
+        eval(this_output_name)[this_key_column_name] =  eval(this_output_name)[this_key_column_name].astype(str).str.replace('nan-', '-', regex = True)     # get rid of 'nan' in keys   (if nan is at the start of the key string) 
+
+        del this_code
+        del c
+        del this_search_position
+        del this_string
+
+        # Check if they key which has been created is unique
+        eval(this_output_name)['TEMP_UNIQUE_KEY'] = eval(this_output_name).groupby(this_key_column_name)[this_key_column_name].transform('count')
+        max_key_count = eval(this_output_name)['TEMP_UNIQUE_KEY'].max()
+        eval(this_output_name).drop('TEMP_UNIQUE_KEY', axis=1, inplace=True) # drop the count column
+        if max_key_count >1:
+            print(f'not unique key: {this_output_name}.{this_key_column_name}')
+
+        elif max_key_count == 1:
+                    print(f'unique key: {this_output_name}.{this_key_column_name}')
+
+        del max_key_count
+    
+    del this_output_name
+    del this_key_column_name
+    del this_key_column_value
+
+
+
+#########################################################
+#           COPY CLEANED DATAFRAMES TO SQLITE           #
+#########################################################
+
+# CODE TO IMPORT CLEANED DATAFRAMES TO SQLITE
+
+# sorting a dataframe by a column, need inplace=True or nothing happens
+dynamic_code.sort_values(by='run_order', ascending=True, inplace=True)
+dynamic_code.reset_index(drop=True, inplace=True)  # reset the index each time or things get messed up
+
+for i in range(len(dynamic_code)):
+    this_line = dynamic_code['run_order'][i]
+
+    if this_line >= 798:     # the imports to SQLITE dynamic codes starts at run_order = 798
+        print('')
+        print(dynamic_code['code'][i])
+
+        # run the line of code 
+        exec(dynamic_code['code'][i])
+
+del i
+
+
+### END OF ALL FILE IMPORTS ##
+
+
+
+
+
+#####################
+# COMPARE FUNCTION  #
+#####################
+
+def exeption_report(master_table, master_table_unique_key, master_join_columns, compare_table, compare_join_columns):
+
+    #master_table_unique_key should be the unique key even if the master join columns are difference, e.g. 'your_col_1, your_col_2, your_col_3' even if the join to column is only 'your_col_1'
+    #master_join_columns & compare_join_columns can be multiple columns separated by a comma: e.g.'your_col_1, your_col_2, your_col_3'
+
+    master_list = master_join_columns.split(',')
+    compare_list = compare_join_columns.split(',')
+
+    # Fields needed in dynamic sql
+    master_select = f'a.{master_join_columns}'.replace(' ','').replace(',',',a.').replace(',',', ')
+    master_join = f''
+    master_select = f''
+    compare_null = f''
+    master_key = f''
+    distinct_key = f''
+    master_unique_key = f'upper(coalesce(a.{master_table_unique_key},"-"))'.replace(', ','^').replace('^',',"-"))||upper(coalesce(a.')
+ 
+
+    # Loop through the list and process each value
+    for i in range(len(master_list)):
+        this_master_list = master_list[i].strip()
+        this_compare_list = compare_list[i].strip()    
+        
+        if master_join == '':
+            master_join = f'{master_join}lower(coalesce(a.{this_master_list},"-")) = lower(coalesce(b.{this_compare_list},"-"))'
+            master_select = f'{master_select}a.{this_master_list}'
+            compare_null = f'{compare_null}b.{this_compare_list} is null'
+            master_key = f'{master_key}upper(coalesce(a.{this_master_list},"-"))'
+            distinct_key = f'{distinct_key}upper(coalesce({this_master_list},"-"))'                    
+
+        else:
+            master_join = f'{master_join} and lower(coalesce(a.{this_master_list},"-")) = lower(coalesce(b.{this_compare_list},"-"))'
+            master_select = f'{master_select}, a.{this_master_list}'
+            compare_null = f'{compare_null} and b.{this_compare_list} is null'
+            master_key = f'{master_key}||upper(coalesce(a.{this_master_list},"-"))'        
+            distinct_key = f'{distinct_key}||upper(coalesce({this_master_list},"-"))'      
+
+    #print('master_table: ',master_table)       
+    #print('master_unique_key: ',master_unique_key)      
+    #print('master_join: ',master_join)
+    #print('master_select: ',master_select)
+    #print('compare_null: ',compare_null)
+    #print('master_key: ',master_key)
+    #print('distinct_key: ',distinct_key)
+
+    query = ('''     
+    
+    select distinct {} as join_key
+            
+        ,'{}' as appears_in
+        ,case when {} then '{}' else null end as missing_from
+        ,case when {} then '{}' else null end as missing_from_desc             
+                    
+        ,'{}' as master_join_columns
+        ,'{}' as compare_join_columns
+        ,'{}' as master_table_unique_key
+
+    from {} as a
+    left join {} as b
+        on {}
+
+    where missing_from is not null
+
+                   
+    '''.format(master_unique_key, master_table, compare_null, compare_table, compare_null, compare_table, master_join_columns, compare_join_columns, master_table_unique_key, master_table, compare_table, master_join))
+    
+    #print(query)
+
+    table_check = pandas.read_sql_query("select name from sqlite_master where type='table' and name='exception_all'", con)
+    
+    #print(table_check)
+       
+    if table_check.empty:
+        #print('table check:',table_check)
+
+        query_create = ('''
+                 create table exception_all as 
+                 {}
+                 '''.format(query))
+    
+        #print(query_create)
+        cursor.execute(query_create)
+        con.commit()
+        del query   
+        del query_create   
+
+
+    else:
+        query_insert = ('''
+        insert into exception_all
+                 {}
+                 and ({}||appears_in||missing_from) not in (select join_key||appears_in||missing_from from exception_all)
+                 '''.format(query, master_key))
+
+        #print(query_insert)
+        cursor.execute(query_insert)
+        con.commit()
+        del query   
+        del query_insert           
+
+    #results = pandas.read_sql_query('select * from {}'.format(exception_output_table), con)
+
+
+###########################
+# EXCEPTION REPORTS START #
+###########################
+
+# remove tables from previous runs
+cursor.execute('drop table if exists exception_all')
+cursor.execute('drop table if exists exception_desc')
+con.commit()
+
+
+# exeption_report (master_table, master_table_unique_key, master_join_columns, compare_table, compare_join_columns)
+    
+    #master_table_unique_key should be the unique key even if the master join columns are differenct, 
+        #e.g. 'your_key_col_1, your_key_col_2, your_key_col_3' even if the join to column is only 'join_key'
+
+    #master_join_columns & compare_join_columns can be multiple columns separated by a comma: e.g.'your_key_col_1, your_key_col_2, your_key_col_3'
+
+
+
+# function call
+exeption_report ('your_table_one','your_key_col_1, your_key_col_2, your_key_col_3','join_key','your_table_two','join_key')
+
+# reverse it to compare both ways (ie in table 1 but not table 2 OR in table 2 but not table 1)
+exeption_report ('your_table_two','your_key_col_1, your_key_col_2, your_key_col_3','join_key','your_table_one','join_key')
+
+
+
+# TAB NAME: appears_in field
+
+query = ('''
+select distinct a.appears_in
+	,a.master_join_columns
+	
+from exception_all as a		
+order by 1,2
+''')	
+
+spreadheet_tabs = pandas.read_sql_query(query, con)
+
+
+for n in range(len(spreadheet_tabs)):
+
+	original_table = spreadheet_tabs.at[n,'appears_in']
+	master_join_columns = spreadheet_tabs.at[n,'master_join_columns']
+
+	master_list = master_join_columns.split(',')
+	master_join = f''	
+
+	# get column names from the original table
+	cursor.execute(f"PRAGMA table_info({original_table})")
+	columns = [description[1] for description in cursor.fetchall()]
+
+	original_table_columns = f''
+
+	for y in range(len(columns)):
+		this_col = columns[y]
+		if original_table_columns == '':
+			original_table_columns = f'{this_col}'
+		else:
+			original_table_columns = f'{original_table_columns}, {this_col}'
+
+	#print(original_table_columns)
+
+	# Loop through the list and process each value
+	for i in range(len(master_list)):
+		this_master_list = master_list[i].strip()
+		
+		if master_join == '':
+			master_join = f'{master_join}upper(coalesce(a.{this_master_list},"-"))'       
+
+		else:
+			master_join = f'{master_join}||upper(coalesce(a.{this_master_list},"-"))'
+
+		#print(master_join)
+		query = ('''
+
+		   		select sa.*
+		   			,rank() over (partition by {} order by sa.missing_from) as missing_rank
+
+		   		from
+		   		(
+		   		select distinct b.missing_from
+		   			,b.missing_from_desc
+					,a.*
+				from {} as a
+				left join exception_all  as b
+					on {} = b.join_key
+				
+				where b.missing_from is not null
+		   		) as sa
+
+			'''.format(original_table_columns, original_table, master_join))
+
+		#print(query)
+		table_check = pandas.read_sql_query("select name from sqlite_master where type='table' and name='temp_exceptions_{}'".format(original_table), con)
+		
+		#print(table_check)
+		
+		if table_check.empty:
+			#print('table check:',table_check)
+
+			query_create = ('''
+					create table temp_exceptions_{} as 
+					{}
+					'''.format(original_table, query))
+		
+			#print(query_create)
+			cursor.execute(query_create)
+			con.commit()
+			del query   
+			del query_create   
+
+
+		else:
+			query_insert = ('''
+					insert into temp_exceptions_{}
+					{}
+					'''.format(original_table, query))
+
+			#print(query_insert)
+			cursor.execute(query_insert)
+			con.commit()
+			del query   
+			del query_insert    
+
+
+	
+
+	#this_tab = pandas.read_sql_query(query, con)
+
+	#print('creating tab: ',original_table)    
+	#print(master_join_columns)
+	#print(master_join)
+	#print(' ')
+
+	#data_to_excel_sheet (datapath, 'Population Exception Report.xlsx', original_table, this_tab)
+	#print(' ')    
+
+
+# create a table with all the missing instances on one description (rank 1)
+
+query = ('''
+		create table exception_rank as       
+		select a.join_key
+			,a.appears_in
+			,a.missing_from
+			,a.missing_from as missing_from_desc   
+            ,a.master_join_columns   
+            ,a.master_table_unique_key   
+			,rank() over (partition by a.join_key, a.appears_in order by a.missing_from) as join_rank
+			
+		from exception_all as a
+        
+                 
+        ''')
+
+#print(query_insert)
+cursor.execute('drop table if exists exception_rank')
+cursor.execute(query)
+con.commit()
+del query   
+
+
+# count up how many exceptions there are per join_key and appears_in
+max_join_ranks = pandas.read_sql_query("select max(join_rank) as max_rank from exception_rank", con)
+x = max_join_ranks.at[0,'max_rank']  # maximum exceptions
+print('max_rank:', x)
+n=2 # used to stop the loop when the appropriate number has been reached (or not run at all if the max is 1)
+
+while n <= x:
+    #print('join_rank:',n)
+
+    # run this as many times as there are max ranks and create missing_from_combined, updating "missing_from" of rank 1 to include all the tables where its missing
+    query = ('''   
+    update exception_rank as a
+    set missing_from_desc = sa.missing_from_desc     
+    FROM 
+    (
+
+    select a.join_key
+        , a.appears_in
+        , a.missing_from 
+        
+        , case when b.missing_from_desc is not null then a.missing_from_desc||' + '||b.missing_from_desc else a.missing_from_desc end as missing_from_desc
+        
+        ,a.master_join_columns
+        ,a.master_table_unique_key
+        
+    from exception_rank as a 
+    left join exception_rank as b
+        on a.join_key = b.join_key
+            and a.appears_in = b.appears_in
+            and b.join_rank = {} -- paramatise this value
+            
+    where a.join_rank = 1
+    ) as sa
+
+    where a.join_key = sa.join_key
+        and a.appears_in = sa.appears_in
+        and a.join_rank = 1   
+
+            '''.format(n))
+
+    #print(query)
+    cursor.execute(query)
+    con.commit()
+    del query   
+
+    n=n+1
+
+
+query = ('''
+create table exception_desc as
+select join_key
+	,appears_in 
+	,missing_from_desc as missing_from
+    ,master_join_columns
+    ,master_table_unique_key
+	
+from exception_rank 
+where join_rank = 1
+order by 1,2
+''')
+
+cursor.execute('drop table if exists exception_desc')
+cursor.execute(query)
+cursor.execute('drop table if exists exception_rank')
+con.commit()
+del query   
+
+
+query = ('''
+select distinct a.appears_in
+,master_table_unique_key		 
+from exception_all as a		
+order by 1,2
+''')	
+
+spreadheet_tabs = pandas.read_sql_query(query, con)
+
+#print(spreadheet_tabs)
+
+for n in range(len(spreadheet_tabs)):
+
+	original_table = spreadheet_tabs.at[n,'appears_in']
+	original_table_key = spreadheet_tabs.at[n,'master_table_unique_key']
+	original_table_sort = spreadheet_tabs.at[n,'master_table_unique_key'] 
+
+	original_table_key = original_table_key.replace(' ','').replace(',','^')
+	original_table_key = f'upper(coalesce(b.{original_table_key},"-"))'
+	original_table_key = original_table_key.replace('^',',"-"))||upper(coalesce(b.')
+
+	original_table_sort = original_table_sort.replace(' ','').replace(',',', b.')
+	original_table_sort = f'b.{original_table_sort}'
+
+	#print('table: ',original_table)
+	#print('key: ',original_table_key)
+	# print('order by: ',original_table_sort)
+	#print(' ')
+
+	query = ('''		  
+	select null as "Ignore this Y/N"
+		,null as "Investigate this Y/N"
+		,a.missing_from
+		
+		,b.*
+	
+	from exception_desc as a
+	left join {} as b
+		on a.join_key = {}
+
+	where 	a.appears_in = '{}'
+	order by {}
+		  
+	'''.format(original_table, original_table_key, original_table, original_table_sort))
+		  
+	#print(query)
+
+	this_tab = pandas.read_sql_query(query, con)
+
+	print('creating tab: ',original_table)    
+	#print(master_join_columns)
+	#print(master_join)
+	#print(' ')
+
+	# NAME OF THE EXCEPTION REPORT EXCEL
+	data_to_excel_sheet (datapath, 'Population Exception Report.xlsx', original_table, this_tab)
+	print(' ')    
+
+# END
+
