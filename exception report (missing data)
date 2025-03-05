@@ -1,3 +1,5 @@
+### Note the code up until the comment "end of all imports" is the same as the "import and clean excel to sqlite" function. It is only after that point that the exception report code starts
+
 ##############################
 # IMPORT SPREADSHEET FORMAT  #
 ##############################
