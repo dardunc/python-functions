@@ -1,3 +1,22 @@
+##############################
+# IMPORT SPREADSHEET FORMAT  #
+##############################
+
+'''
+tab: file_imports
+columns: file_name	file_tab_name	import_from_row	output_table_name	key_column_name	key_column_value
+
+tab: column_map
+columns: output_table_name	original_column_name	rename_column_to	correct_values_list	add_values_to_master_list
+
+tab: add_columns
+columns: output_table_name	existing_column_name	create_new_column_name	search_string	value_if_true	value_if_false	duplicate_existing_column
+
+tab: correct_values
+columns: correct_values_list	change_from	change_to
+'''
+
+
 ###################
 # PYTHON PACKAGES #
 ###################
