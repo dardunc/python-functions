@@ -5,7 +5,7 @@
 def identify_dates(your_dataframe):
 
   date_column_list = []
-  test_df = your_dataframe
+  test_df = your_dataframe.copy() # make a copy so the original isnt affected
 
   # Loop through columns and force convert to datetime
   for column in test_df.columns:
